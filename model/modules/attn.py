@@ -17,6 +17,8 @@ class AttentionModule(nn.Module):
         self.num_heads = num_heads
         self.dropout = 0.1
 
+        # faster than my implementation but is supported from pytorch >= 2.0
+        # flash attention v2 from Dao AI Lab is not supported for T4 GPUs so there isn't sence to use it
         self.flash = hasattr(F, 'scaled_dot_product_attention')
 
         self.out_linear = torch.nn.Linear(self.hidden_dim, self.hidden_dim)  # c_proj
@@ -29,16 +31,11 @@ class AttentionModule(nn.Module):
 
         assert hidden_dim % self.num_heads == 0, "Hidden_dim must be equal to num_heads * head_dim"
 
-        K = K.reshape(batch_size, key_len, self.num_heads, -1).transpose(1,
-                                                                         2)  # (batch_size, num_heads, seq_len, head_dim)
-        V = V.reshape(batch_size, value_len, self.num_heads, -1).transpose(1,
-                                                                           2)  # (batch_size, num_heads, seq_len, head_dim)
-        Q = Q.reshape(batch_size, query_len, self.num_heads, -1).transpose(1,
-                                                                           2)  # (batch_size, num_heads, seq_len, head_dim)
+        K = K.reshape(batch_size, key_len, self.num_heads, -1).transpose(1, 2)
+        V = V.reshape(batch_size, value_len, self.num_heads, -1).transpose(1, 2)
+        Q = Q.reshape(batch_size, query_len, self.num_heads, -1).transpose(1, 2)
 
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
-            # efficient attention using Flash Attention CUDA kernels
             with autocast():
                 # print(Q.shape, K.shape, V.shape, mask.shape)
                 y = F.scaled_dot_product_attention(
